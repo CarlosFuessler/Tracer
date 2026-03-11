@@ -1,0 +1,14 @@
+[package]
+name = "kicad_fmt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+eda_core = { version = "0.1.0", path = "../eda_core" }
+kiutils_kicad = "0.2.0"
+kiutils_sexpr = "0.1.1"

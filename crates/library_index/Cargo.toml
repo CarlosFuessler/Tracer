@@ -1,0 +1,13 @@
+[package]
+name = "library_index"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+eda_core = { version = "0.1.0", path = "../eda_core" }
+kicad_fmt = { version = "0.1.0", path = "../kicad_fmt" }

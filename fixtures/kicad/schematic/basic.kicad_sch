@@ -1,0 +1,20 @@
+(kicad_sch
+  (version 20231120)
+  (generator "rust_pcb_editor")
+  (uuid "5dbd1800-2fb3-4d84-a2d5-c696f6c7de01")
+  (paper "A4")
+  (lib_symbols)
+  (symbol
+    (lib_id "Device:R")
+    (at 101.6 76.2 0)
+    (unit 1)
+    (in_bom yes)
+    (on_board yes)
+    (uuid "c5d5e0ec-8337-4af1-9db3-b6caee1430fb")
+    (property "Reference" "R1" (at 101.6 73.66 0))
+    (property "Value" "10k" (at 101.6 78.74 0)))
+  (wire
+    (pts
+      (xy 104.14 76.2)
+      (xy 109.22 76.2))
+    (stroke (width 0) (type default))))

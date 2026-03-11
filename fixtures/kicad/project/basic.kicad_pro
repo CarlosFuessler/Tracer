@@ -1,0 +1,26 @@
+{
+  "board": {
+    "design_settings": {}
+  },
+  "boards": [],
+  "cvpcb": {},
+  "libraries": {},
+  "meta": {
+    "filename": "basic"
+  },
+  "net_settings": {},
+  "pcbnew": {},
+  "schematic": {
+    "drawing": {
+      "default_line_thickness": 6.0
+    }
+  },
+  "sheets": [
+    [
+      "5dbd1800-2fb3-4d84-a2d5-c696f6c7de01",
+      "/"
+    ]
+  ],
+  "text_variables": {},
+  "version": 1
+}

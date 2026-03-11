@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "apps/schematic_editor",
+    "crates/app_shell",
+    "crates/eda_core",
+    "crates/kicad_fmt",
+    "crates/library_index",
+    "crates/render_scene",
+]
+default-members = ["apps/schematic_editor"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+app_shell = { path = "crates/app_shell" }
+eda_core = { path = "crates/eda_core" }
+kicad_fmt = { path = "crates/kicad_fmt" }
+library_index = { path = "crates/library_index" }
+render_scene = { path = "crates/render_scene" }
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unsafe_code = "forbid"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+expect_used = "deny"
+module_name_repetitions = "allow"
+todo = "deny"
+unwrap_used = "deny"
