@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -73,10 +74,76 @@ impl EditorState {
 
 fn build_library_catalog() -> LibraryCatalog {
     let mut catalog = detect_system_libraries();
-    catalog.add_source(LibrarySource::new(
-        "Starter symbols",
-        "fixtures/kicad/library/basic.kicad_sym",
-        LibraryKind::Symbol,
-    ));
+    if let Some(starter_path) = starter_symbol_library_path() {
+        catalog.add_source(LibrarySource::new(
+            "Starter symbols",
+            starter_path,
+            LibraryKind::Symbol,
+        ));
+    } else {
+        eprintln!("warning: starter symbol library is unavailable");
+    }
     catalog
+}
+
+fn starter_symbol_library_path() -> Option<PathBuf> {
+    let repo_fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../fixtures/kicad/library/basic.kicad_sym");
+    if repo_fixture.is_file() {
+        return match repo_fixture.canonicalize() {
+            Ok(path) => Some(path),
+            Err(error) => {
+                eprintln!(
+                    "warning: failed to canonicalize starter library {}: {error}",
+                    repo_fixture.display()
+                );
+                Some(repo_fixture)
+            }
+        };
+    }
+
+    let fixture_dir = std::env::temp_dir().join("rust_pcb_editor");
+    if let Err(error) = fs::create_dir_all(&fixture_dir) {
+        eprintln!(
+            "warning: failed to prepare starter library directory {}: {error}",
+            fixture_dir.display()
+        );
+        return None;
+    }
+
+    let materialized_fixture = fixture_dir.join("basic.kicad_sym");
+    if let Err(error) = fs::write(&materialized_fixture, kicad_fmt::SYMBOL_LIBRARY_FIXTURE) {
+        eprintln!(
+            "warning: failed to write starter library {}: {error}",
+            materialized_fixture.display()
+        );
+        return None;
+    }
+
+    Some(materialized_fixture)
+}
+
+#[cfg(test)]
+mod tests {
+    use library_index::LibraryKind;
+
+    use super::{build_library_catalog, starter_symbol_library_path};
+
+    #[test]
+    fn starter_library_fixture_is_available() {
+        let path = starter_symbol_library_path().expect("starter library should resolve");
+        assert!(path.is_file(), "starter library path should exist");
+        assert!(
+            !kicad_fmt::symbol_parser::list_symbol_names(&path).is_empty(),
+            "starter library should contain at least one symbol"
+        );
+    }
+
+    #[test]
+    fn tracer_catalog_includes_starter_symbols() {
+        let catalog = build_library_catalog();
+        assert!(catalog.sources().iter().any(|source| {
+            source.kind() == LibraryKind::Symbol && source.name() == "Starter symbols"
+        }));
+    }
 }

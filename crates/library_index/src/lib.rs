@@ -153,6 +153,59 @@ impl LibraryCatalog {
         }
     }
 
+    fn expand_all_symbol_libraries(&mut self) {
+        let libs_to_expand: Vec<PathBuf> = self
+            .sources
+            .iter()
+            .filter(|source| {
+                source.kind == LibraryKind::Symbol
+                    && source.symbol_name.is_empty()
+                    && !self.expanded_libs.contains(&source.path)
+            })
+            .map(|source| source.path.clone())
+            .collect();
+
+        for lib_path in libs_to_expand {
+            self.expand_symbol_library(&lib_path);
+        }
+    }
+
+    pub fn symbols_in_library(&mut self, lib_path: &Path) -> Vec<&LibrarySource> {
+        self.expand_symbol_library(lib_path);
+        self.sources
+            .iter()
+            .filter(|source| {
+                source.kind == LibraryKind::Symbol
+                    && !source.symbol_name.is_empty()
+                    && source.path == lib_path
+            })
+            .collect()
+    }
+
+    pub fn search_symbols(&mut self, query: &str) -> Vec<&LibrarySource> {
+        let query_lower = query.trim().to_ascii_lowercase();
+        if query_lower.is_empty() {
+            return Vec::new();
+        }
+
+        self.expand_all_symbol_libraries();
+
+        self.sources
+            .iter()
+            .filter(|source| {
+                source.kind == LibraryKind::Symbol
+                    && !source.symbol_name.is_empty()
+                    && (source.name.to_ascii_lowercase().contains(&query_lower)
+                        || source.symbol_name.to_ascii_lowercase().contains(&query_lower)
+                        || source
+                            .path
+                            .to_string_lossy()
+                            .to_ascii_lowercase()
+                            .contains(&query_lower))
+            })
+            .collect()
+    }
+
     /// Lazily expand all symbol libraries that match the search query, then search.
     #[must_use]
     pub fn search(&mut self, query: &str) -> Vec<&LibrarySource> {
@@ -355,7 +408,13 @@ fn has_extension(path: &Path, ext: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::{LibraryCatalog, LibraryKind, LibrarySource, detect_system_libraries};
+
+    fn basic_symbol_fixture() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/kicad/library/basic.kicad_sym")
+    }
 
     #[test]
     fn search_is_case_insensitive() {
@@ -429,5 +488,37 @@ mod tests {
         ));
         assert_eq!(catalog.by_kind(LibraryKind::Symbol).len(), 1);
         assert_eq!(catalog.by_kind(LibraryKind::Footprint).len(), 1);
+    }
+
+    #[test]
+    fn symbols_in_library_expands_requested_symbol_library() {
+        let fixture = basic_symbol_fixture();
+        let mut catalog = LibraryCatalog::default();
+        catalog.add_source(LibrarySource::new(
+            "Starter symbols",
+            fixture.clone(),
+            LibraryKind::Symbol,
+        ));
+
+        let results = catalog.symbols_in_library(&fixture);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].symbol_name(), "Device:R");
+    }
+
+    #[test]
+    fn search_symbols_expands_unopened_symbol_libraries() {
+        let fixture = basic_symbol_fixture();
+        let mut catalog = LibraryCatalog::default();
+        catalog.add_source(LibrarySource::new(
+            "Starter symbols",
+            fixture,
+            LibraryKind::Symbol,
+        ));
+
+        let results = catalog.search_symbols("device:r");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].symbol_name(), "Device:R");
     }
 }

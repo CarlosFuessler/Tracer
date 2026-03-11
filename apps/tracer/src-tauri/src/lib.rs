@@ -11,6 +11,8 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::library::search_symbols,
+            commands::library::list_symbol_libraries,
+            commands::library::list_symbols_in_library,
             commands::library::get_symbol_graphics,
             commands::document::get_document,
             commands::document::place_symbol,

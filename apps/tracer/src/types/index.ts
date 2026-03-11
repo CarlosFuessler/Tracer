@@ -69,6 +69,11 @@ export interface LibraryEntry {
   kind: "symbol" | "footprint";
 }
 
+export interface LibraryGroup {
+  name: string;
+  lib_path: string;
+}
+
 export interface Viewport {
   pan: Point2D;
   zoom: number; // px per mm

@@ -185,11 +185,11 @@ pub struct SymbolPin {
 }
 
 impl SymbolPin {
-    /// The endpoint of the pin stub (opposite of the connection point).
+    /// The endpoint of the pin stub extending from the connection point.
     #[must_use]
     pub fn stub_end(&self) -> Point2D {
         let (dx, dy) = self.direction.unit();
-        self.position.offset(-dx * self.length, -dy * self.length)
+        self.position.offset(dx * self.length, dy * self.length)
     }
 }
 

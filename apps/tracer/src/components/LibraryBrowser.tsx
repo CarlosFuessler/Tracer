@@ -1,142 +1,398 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { LibraryEntry } from "../types";
+import { LibraryEntry, LibraryGroup } from "../types";
 
 interface Props {
+  activeSymbol: LibraryEntry | null;
   onDragStart: (entry: LibraryEntry) => void;
-  onStatusChange: (msg: string) => void;
+  onDragEnd: () => void;
+  onPlaceRequest: (entry: LibraryEntry) => void;
+  onStatusChange: (message: string) => void;
 }
 
-export default function LibraryBrowser({ onDragStart, onStatusChange }: Props) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<LibraryEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
+function libraryLabelFromPath(path: string) {
+  return path.split(/[\\/]/).pop()?.replace(/\.kicad_sym$/i, "") ?? path;
+}
 
-  const search = useCallback(async (q: string) => {
-    setLoading(true);
+function matchesLibrary(library: LibraryGroup, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    library.name.toLowerCase().includes(normalizedQuery) ||
+    library.lib_path.toLowerCase().includes(normalizedQuery)
+  );
+}
+
+export default function LibraryBrowser({
+  activeSymbol,
+  onDragStart,
+  onDragEnd,
+  onPlaceRequest,
+  onStatusChange,
+}: Props) {
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [symbolQuery, setSymbolQuery] = useState("");
+  const [libraries, setLibraries] = useState<LibraryGroup[]>([]);
+  const [selectedLibraryPath, setSelectedLibraryPath] = useState("");
+  const [librarySymbols, setLibrarySymbols] = useState<LibraryEntry[]>([]);
+  const [searchResults, setSearchResults] = useState<LibraryEntry[]>([]);
+  const [loadingLibraries, setLoadingLibraries] = useState(false);
+  const [loadingSymbols, setLoadingSymbols] = useState(false);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+
+  const loadLibraries = useCallback(async () => {
+    setLoadingLibraries(true);
     try {
-      const entries = await invoke<LibraryEntry[]>("search_symbols", { query: q });
-      setResults(entries);
-    } catch (e) {
-      onStatusChange(`Search error: ${e}`);
+      const groups = await invoke<LibraryGroup[]>("list_symbol_libraries");
+      setLibraries(groups);
+      setSelectedLibraryPath((currentPath) => {
+        if (groups.some((library) => library.lib_path === currentPath)) {
+          return currentPath;
+        }
+        return groups[0]?.lib_path ?? "";
+      });
+      if (groups.length === 0) {
+        setLibrarySymbols([]);
+      }
+    } catch (error) {
+      setLibraries([]);
+      setLibrarySymbols([]);
+      onStatusChange(`Libraries unavailable: ${error}`);
     } finally {
-      setLoading(false);
+      setLoadingLibraries(false);
     }
   }, [onStatusChange]);
 
-  // Initial load
-  useEffect(() => { search(""); }, [search]);
+  const loadSymbolsForLibrary = useCallback(
+    async (libPath: string) => {
+      if (!libPath) {
+        setLibrarySymbols([]);
+        return;
+      }
 
-  // Debounce search as user types
+      setLoadingSymbols(true);
+      try {
+        const symbols = await invoke<LibraryEntry[]>("list_symbols_in_library", { libPath });
+        setLibrarySymbols(symbols);
+      } catch (error) {
+        setLibrarySymbols([]);
+        onStatusChange(`Symbols unavailable: ${error}`);
+      } finally {
+        setLoadingSymbols(false);
+      }
+    },
+    [onStatusChange]
+  );
+
   useEffect(() => {
-    const t = setTimeout(() => search(query), 200);
-    return () => clearTimeout(t);
-  }, [query, search]);
+    void loadLibraries();
+  }, [loadLibraries]);
 
-  const handleDragStart = useCallback(
-    (e: React.DragEvent, entry: LibraryEntry) => {
-      e.dataTransfer.setData("application/json", JSON.stringify(entry));
-      e.dataTransfer.effectAllowed = "copy";
+  const filteredLibraries = useMemo(
+    () => libraries.filter((library) => matchesLibrary(library, libraryQuery)),
+    [libraries, libraryQuery]
+  );
+
+  useEffect(() => {
+    setSelectedLibraryPath((currentPath) => {
+      if (filteredLibraries.length === 0) {
+        return currentPath ? "" : currentPath;
+      }
+      if (filteredLibraries.some((library) => library.lib_path === currentPath)) {
+        return currentPath;
+      }
+      return filteredLibraries[0].lib_path;
+    });
+  }, [filteredLibraries]);
+
+  useEffect(() => {
+    if (symbolQuery.trim()) {
+      return;
+    }
+    void loadSymbolsForLibrary(selectedLibraryPath);
+  }, [loadSymbolsForLibrary, selectedLibraryPath, symbolQuery]);
+
+  useEffect(() => {
+    const trimmed = symbolQuery.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      return;
+    }
+
+    setLoadingSearch(true);
+    const timer = window.setTimeout(() => {
+      invoke<LibraryEntry[]>("search_symbols", { query: trimmed })
+        .then(setSearchResults)
+        .catch((error) => {
+          setSearchResults([]);
+          onStatusChange(`Search failed: ${error}`);
+        })
+        .finally(() => setLoadingSearch(false));
+    }, 140);
+
+    return () => {
+      window.clearTimeout(timer);
+      setLoadingSearch(false);
+    };
+  }, [onStatusChange, symbolQuery]);
+
+  const filteredLibraryPaths = useMemo(
+    () => filteredLibraries.map((library) => library.lib_path),
+    [filteredLibraries]
+  );
+  const selectedLibrary = useMemo(
+    () => libraries.find((library) => library.lib_path === selectedLibraryPath) ?? null,
+    [libraries, selectedLibraryPath]
+  );
+  const isSearchingSymbols = symbolQuery.trim().length > 0;
+  const isFilteringLibraries = libraryQuery.trim().length > 0;
+  const visibleSymbols = useMemo(() => {
+    if (!isSearchingSymbols) {
+      return librarySymbols;
+    }
+
+    if (!isFilteringLibraries) {
+      return searchResults;
+    }
+
+    const allowedLibraryPaths = new Set(filteredLibraryPaths);
+    return searchResults.filter((entry) => allowedLibraryPaths.has(entry.lib_path));
+  }, [filteredLibraryPaths, isFilteringLibraries, isSearchingSymbols, librarySymbols, searchResults]);
+
+  const handleDrag = useCallback(
+    (event: React.DragEvent, entry: LibraryEntry) => {
+      const payload = JSON.stringify(entry);
+      event.dataTransfer.setData("application/json", payload);
+      event.dataTransfer.setData("text/plain", payload);
+      event.dataTransfer.effectAllowed = "copyMove";
       onDragStart(entry);
-      onStatusChange(`Dragging ${entry.name}…`);
+      onStatusChange(`Drag ${entry.name}`);
     },
     [onDragStart, onStatusChange]
   );
 
   return (
-    <aside className="w-72 flex flex-col bg-surface border-l border-border flex-shrink-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 pt-3 pb-2 flex-shrink-0">
-        <span className="text-sm font-medium text-white">Components</span>
-        <span className="text-xs text-gray-500">{results.length} results</span>
+    <aside className="tracer-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] p-2.5 shadow-[0_28px_80px_rgba(0,0,0,0.36)]">
+      <div className="flex items-center gap-2 pb-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/72">
+            Parts
+          </div>
+          <div className="truncate text-[10px] text-white/28">
+            {isSearchingSymbols
+              ? `${visibleSymbols.length} matches`
+              : `${filteredLibraries.length} libraries`}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="tracer-icon-button ml-auto h-9 w-9"
+          aria-label="Reload libraries"
+          title="Reload libraries"
+          onClick={() => void loadLibraries()}
+        >
+          ↻
+        </button>
       </div>
 
-      {/* Search input — native HTML input, always works */}
-      <div className="px-2 pb-2 flex-shrink-0">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-canvas border border-border focus-within:border-accent transition-colors">
-          <span className="text-gray-500 text-xs">🔍</span>
+      <div className="grid gap-2 pb-2">
+        <label className="tracer-search flex items-center gap-2 rounded-[18px] px-3 py-2.5">
+          <span className="text-[10px] uppercase tracking-[0.22em] text-white/28">Lib</span>
           <input
-            ref={searchRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()} // prevent tool shortcuts while typing
-            placeholder="Search components…"
-            className="flex-1 bg-transparent text-white text-xs outline-none placeholder-gray-600 min-w-0"
+            value={libraryQuery}
+            onChange={(event) => setLibraryQuery(event.target.value)}
+            onKeyDown={(event) => event.stopPropagation()}
+            placeholder="Filter libraries"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/24"
           />
-          {loading && <span className="text-gray-500 text-xs animate-spin">⟳</span>}
-          {query && !loading && (
+          {libraryQuery ? (
             <button
-              onClick={() => setQuery("")}
-              className="text-gray-500 hover:text-white text-xs transition-colors"
+              type="button"
+              className="text-[11px] text-white/38 transition hover:text-white/70"
+              onClick={() => setLibraryQuery("")}
             >
               ✕
             </button>
-          )}
-        </div>
+          ) : null}
+        </label>
+
+        <label className="tracer-search flex items-center gap-2 rounded-[18px] px-3 py-2.5">
+          <span className="text-[10px] uppercase tracking-[0.22em] text-white/28">Sym</span>
+          <input
+            value={symbolQuery}
+            onChange={(event) => setSymbolQuery(event.target.value)}
+            onKeyDown={(event) => event.stopPropagation()}
+            placeholder={isFilteringLibraries ? `Search ${filteredLibraries.length} libs` : "Search all symbols"}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/24"
+          />
+          {symbolQuery ? (
+            <button
+              type="button"
+              className="text-[11px] text-white/38 transition hover:text-white/70"
+              onClick={() => setSymbolQuery("")}
+            >
+              ✕
+            </button>
+          ) : null}
+        </label>
       </div>
 
-      {/* Results — scrollable */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {results.length === 0 && !loading && (
-          <div className="text-xs text-gray-600 text-center py-8">
-            {query ? "No matching symbols" : "Loading libraries…"}
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(128px,0.48fr)_minmax(0,1fr)] gap-2 overflow-hidden">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-white/7 bg-black/10 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-2 px-1">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-white/34">Libraries</span>
+            <span className="text-[11px] text-white/36">{loadingLibraries ? "…" : filteredLibraries.length}</span>
           </div>
-        )}
 
-        <div className="flex flex-col gap-0.5">
-          {results.map((entry, i) => (
-            <LibraryRow
-              key={`${entry.lib_path}::${entry.symbol_name}::${i}`}
-              entry={entry}
-              onDragStart={handleDragStart}
-            />
-          ))}
-        </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+            {filteredLibraries.length === 0 ? (
+              <EmptyState message="No libraries" />
+            ) : (
+              <div className="flex flex-col gap-1">
+                {filteredLibraries.map((library) => {
+                  const selected = library.lib_path === selectedLibraryPath;
+                  return (
+                    <button
+                      key={library.lib_path}
+                      type="button"
+                      onClick={() => setSelectedLibraryPath(library.lib_path)}
+                      className={[
+                        "flex min-w-0 items-center gap-2 overflow-hidden rounded-[16px] border px-2.5 py-2 text-left transition",
+                        selected
+                          ? "border-[#8bd5ff]/30 bg-[#8bd5ff]/10 text-white"
+                          : "border-transparent bg-white/[0.02] text-white/72 hover:border-white/8 hover:bg-white/[0.05]",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "h-2 w-2 flex-shrink-0 rounded-full",
+                          selected ? "bg-[#8bd5ff]" : "bg-white/14",
+                        ].join(" ")}
+                      />
+                      <span className="truncate text-[13px]">{library.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-white/7 bg-black/10 p-2.5">
+          <div className="mb-2 flex items-center justify-between gap-2 px-1">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-white/34">
+              {isSearchingSymbols ? "Results" : "Symbols"}
+            </span>
+            <span className="max-w-[11rem] truncate text-[11px] text-white/36">
+              {loadingSearch || loadingSymbols
+                ? "…"
+                : isSearchingSymbols
+                  ? isFilteringLibraries
+                    ? `${filteredLibraries.length} libs`
+                    : `${visibleSymbols.length}`
+                  : selectedLibrary?.name ?? ""}
+            </span>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+            {visibleSymbols.length === 0 ? (
+              <EmptyState
+                message={
+                  isSearchingSymbols
+                    ? isFilteringLibraries
+                      ? "No matches in filtered libs"
+                      : "No matches"
+                    : selectedLibraryPath
+                      ? "No symbols"
+                      : "Select a library"
+                }
+              />
+            ) : (
+              <div className="flex flex-col gap-1">
+                {visibleSymbols.map((entry) => (
+                  <SymbolRow
+                    key={`${entry.lib_path}:${entry.symbol_name}`}
+                    entry={entry}
+                    active={activeSymbol?.lib_path === entry.lib_path && activeSymbol?.symbol_name === entry.symbol_name}
+                    showLibraryName={isSearchingSymbols}
+                    onDragStart={handleDrag}
+                    onDragEnd={onDragEnd}
+                    onPlaceRequest={onPlaceRequest}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </aside>
   );
 }
 
-function LibraryRow({
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex h-full min-h-[112px] items-center justify-center rounded-[16px] border border-dashed border-white/8 bg-white/[0.02] px-4 text-center text-[12px] text-white/38">
+      {message}
+    </div>
+  );
+}
+
+function SymbolRow({
   entry,
+  active,
+  showLibraryName,
   onDragStart,
+  onDragEnd,
+  onPlaceRequest,
 }: {
   entry: LibraryEntry;
-  onDragStart: (e: React.DragEvent, entry: LibraryEntry) => void;
+  active: boolean;
+  showLibraryName: boolean;
+  onDragStart: (event: React.DragEvent, entry: LibraryEntry) => void;
+  onDragEnd: () => void;
+  onPlaceRequest: (entry: LibraryEntry) => void;
 }) {
-  const isLibrary = !entry.symbol_name;
+  const secondaryLabel = showLibraryName ? libraryLabelFromPath(entry.lib_path) : null;
 
   return (
     <div
-      draggable={!isLibrary}
-      onDragStart={isLibrary ? undefined : (e) => onDragStart(e, entry)}
+      role="button"
+      tabIndex={0}
+      draggable
+      onClick={() => onPlaceRequest(entry)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onPlaceRequest(entry);
+        }
+      }}
+      onDragStart={(event) => onDragStart(event, entry)}
+      onDragEnd={onDragEnd}
       className={[
-        "flex items-center gap-2 px-2 py-2 rounded-lg transition-colors group",
-        isLibrary
-          ? "cursor-default opacity-60"
-          : "cursor-grab hover:bg-elevated active:cursor-grabbing",
+        "group flex min-w-0 cursor-grab items-center gap-2 overflow-hidden rounded-[16px] border px-2.5 py-2.5 transition focus:outline-none focus:ring-1 focus:ring-[#8bd5ff]/25 active:cursor-grabbing",
+        active
+          ? "border-[#8bd5ff]/30 bg-[#8bd5ff]/10"
+          : "border-transparent bg-white/[0.02] hover:border-white/8 hover:bg-white/[0.055]",
       ].join(" ")}
     >
-      {/* Icon */}
-      <div className="w-7 h-7 rounded-md bg-canvas flex items-center justify-center flex-shrink-0">
-        <span className="text-accent text-xs">{isLibrary ? "📁" : "◫"}</span>
+      <div className="min-w-0 flex-1 text-left">
+        <div className="truncate text-[13px] font-medium text-white/88">{entry.name}</div>
+        {secondaryLabel ? (
+          <div className="truncate text-[11px] text-white/32">{secondaryLabel}</div>
+        ) : null}
       </div>
 
-      {/* Text */}
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-white truncate">{entry.name}</div>
-        <div className="text-[10px] text-gray-600 truncate">
-          {entry.symbol_name || entry.lib_path.split("/").pop()}
-        </div>
-      </div>
-
-      {/* Drag handle indicator */}
-      {!isLibrary && (
-        <span className="text-gray-700 text-xs group-hover:text-gray-400 transition-colors flex-shrink-0">
-          ⠿
+      {active ? (
+        <span className="rounded-full border border-[#8bd5ff]/22 bg-[#8bd5ff]/10 px-2 py-0.5 text-[10px] text-[#8bd5ff]">
+          Armed
         </span>
+      ) : (
+        <div className="flex flex-shrink-0 items-center pl-1 text-[12px] text-white/18 transition group-hover:text-white/40">
+          ⠿
+        </div>
       )}
     </div>
   );
