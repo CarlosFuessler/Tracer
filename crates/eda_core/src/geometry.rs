@@ -1,7 +1,7 @@
 //! 2D geometry primitives for schematic editing.
 
 /// A point in schematic space (millimeters).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Point2D {
     pub x: f64,
     pub y: f64,
@@ -55,7 +55,7 @@ impl std::fmt::Display for Point2D {
 }
 
 /// A wire segment between two points.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct WireSegment {
     pub start: Point2D,
     pub end: Point2D,
@@ -83,7 +83,7 @@ impl WireSegment {
 }
 
 /// Axis-aligned bounding box.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct BoundingBox {
     pub min: Point2D,
     pub max: Point2D,
@@ -134,7 +134,7 @@ impl BoundingBox {
 // ── Symbol graphics primitives ─────────────────────────
 
 /// Direction a pin extends from its connection point.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum PinDirection {
     #[default]
     Right,
@@ -172,7 +172,7 @@ impl PinDirection {
 }
 
 /// A pin on a schematic symbol.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SymbolPin {
     pub name: String,
     pub number: String,
@@ -194,7 +194,7 @@ impl SymbolPin {
 }
 
 /// A rectangle in symbol-local coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SymbolRect {
     pub start: Point2D,
     pub end: Point2D,
@@ -218,20 +218,20 @@ impl SymbolRect {
 }
 
 /// A polyline segment in symbol-local coordinates.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SymbolPolyline {
     pub points: Vec<Point2D>,
 }
 
 /// A circle in symbol-local coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SymbolCircle {
     pub center: Point2D,
     pub radius: f64,
 }
 
 /// Complete graphics description for a schematic symbol.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct SymbolGraphics {
     pub pins: Vec<SymbolPin>,
     pub rectangles: Vec<SymbolRect>,

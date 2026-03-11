@@ -3,7 +3,7 @@ use std::{error::Error, fmt};
 use crate::{EntityId, ProjectId, ProjectManifest, SelectionSet};
 use crate::geometry::{BoundingBox, Point2D, SymbolGraphics, WireSegment};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SchematicObjectKind {
     Symbol,
     Wire,
@@ -171,6 +171,10 @@ impl SchematicObject {
     #[must_use]
     pub fn symbol_graphics(&self) -> Option<&SymbolGraphics> {
         self.symbol_graphics.as_ref()
+    }
+
+    pub fn set_symbol_graphics(&mut self, graphics: SymbolGraphics) {
+        self.symbol_graphics = Some(graphics);
     }
 
     /// Approximate bounding box for hit-testing.

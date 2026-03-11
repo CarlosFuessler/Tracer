@@ -1,13 +1,14 @@
 [workspace]
 members = [
     "apps/schematic_editor",
+    "apps/tracer/src-tauri",
     "crates/app_shell",
     "crates/eda_core",
     "crates/kicad_fmt",
     "crates/library_index",
     "crates/render_scene",
 ]
-default-members = ["apps/schematic_editor"]
+default-members = ["apps/tracer/src-tauri"]
 resolver = "2"
 
 [workspace.package]
